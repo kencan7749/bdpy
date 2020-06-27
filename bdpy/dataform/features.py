@@ -93,27 +93,43 @@ class Features(object):
 
         if layer == self.__c_feature_name:
             return self.__features
-
+       
+        # Modify for memory efficiency (mask after loading all feature -> loading with masking
         try:
-            self.__features = np.vstack(
+            if self.__feat_index_table is not None:
+                # Select features by index
+                self.__feature_index = self.__feat_index_table[layer]
+                self.__features = []
+                for label in self.__labels:
+                    load_feat = sio.loadmat(self.__feature_file_table[layer][label])['feat'].flatten('C')[self.__feature_index]
+                    
+                    self.__features.append(load_feat)
+                self.__features = np.vstack(self.__features)
+            else:
+                self.__features = np.vstack(
                 [sio.loadmat(self.__feature_file_table[layer][label])['feat']
                  for label in self.__labels]
             )
+                    
+                
+                
         except NotImplementedError:
-            self.__features = np.vstack(
-                [hdf5storage.loadmat(self.__feature_file_table[layer][label])['feat']
-                 for label in self.__labels]
-            )
+            if self.__feat_index_table is not None:
+                # Select features by index
+                self.__feature_index = self.__feat_index_table[layer]
+                self.__features = []
+                for label in self.__labels:
+                    load_feat = sio.loadmat(self.__feature_file_table[layer][label])['feat'].flatten('C')[self.__feature_index]
+                    
+                    self.__features.append(load_feat)
+                self.__features = np.vstack(self.__features)
+            else:
+                self.__features = np.vstack(
+                    [hdf5storage.loadmat(self.__feature_file_table[layer][label])['feat']
+                     for label in self.__labels]
+                )
 
         self.__c_feature_name = layer
-
-        if self.__feat_index_table is not None:
-            # Select features by index
-            self.__feature_index = self.__feat_index_table[layer]
-            n_sample = self.__features.shape[0]
-            n_feat = np.array(self.__features.shape[1:]).prod()
-
-            self.__features = self.__features.reshape([n_sample, n_feat], order='C')[:, self.__feature_index]
 
         return self.__features
 
@@ -135,9 +151,11 @@ class Features(object):
         for dpath in dpath_lst:
             # List-up layers
             self.__layers = self.__get_layers(dpath)
+            
 
             # List-up stimulus labels
             labels_in_dir = self.__get_labels(dpath, self.__layers, ext=ext)
+            
             label_dir.update({label: dpath for label in labels_in_dir})
             self.__labels += labels_in_dir
 
@@ -165,10 +183,14 @@ class Features(object):
 
     def __get_labels(self, dpath, layers, ext='mat'):
         labels = []
+        
         for lay in layers:
             lay_dir = os.path.join(dpath, lay)
             lay_dir = lay_dir.replace('[', '[[]') # Use glob.escape for Python 3.4 or later
+            
             files = glob.glob(os.path.join(lay_dir, '*.' + ext))
+           
+            
             labels_t = sorted([os.path.splitext(os.path.basename(f))[0] for f in files])
             if not labels:
                 labels = labels_t
